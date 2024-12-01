@@ -28,11 +28,7 @@ class URL:
             type=socket.SOCK_STREAM,
             proto=socket.IPPROTO_TCP
         )
-
-
         s.connect((self.host, self.port))
-
-
         if self.scheme == "https":
             ctx = ssl.create_default_context()
             s = ctx.wrap_socket(s, server_hostname=self.host)
@@ -42,9 +38,7 @@ class URL:
             "User-Agent": "my-custom-browser",
             "Connection": "close"
         }
-
         request = f"GET {format(self.path)} HTTP/1.1\r\n"
-
         for key, value in headers:
             request += f"{key}: {value}\r\n"
         request += "\r\n"
