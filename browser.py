@@ -37,7 +37,18 @@ class URL:
             ctx = ssl.create_default_context()
             s = ctx.wrap_socket(s, server_hostname=self.host)
 
-        request = f"GET {format(self.path)} HTTP/1.0\r\nHost: {format(self.host)}\r\n\r\n"
+        headers = {
+            "Host": self.host,
+            "User-Agent": "my-custom-browser",
+            "Connection": "close"
+        }
+
+        request = f"GET {format(self.path)} HTTP/1.1\r\n"
+
+        for key, value in headers:
+            request += f"{key}: {value}\r\n"
+        request += "\r\n"
+
         s.send(request.encode("utf8"))
 
         response = s.makefile('r', encoding='utf8', newline='\r\n')
