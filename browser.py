@@ -104,24 +104,56 @@ class URL:
             return self.data
 
 
+
 def show(body):
     in_tag = False
-    for c in body:
+    i = 0
+
+    while i < len(body):
+        c = body[i]
+
+        # Checking for entities
         if c == "<":
             in_tag = True
         elif c == ">":
             in_tag = False
         elif not in_tag:
-            print(c, end="")
+            if body[i:i+4] == "&lt;":
+                print("<", end="")
+                i += 3
+            elif body[i:i+4] == "&gt;":
+                print(">", end="")
+                i += 3
+            else:
+                print(c, end="")
+        i += 1
+
+def view_source(body):
+    i = 0
+
+    while i < len(body):
+        if body[i:i+4] == "&lt;":
+            print("<", end="")
+            i += 3
+        elif body[i:i+4] == "&gt;":
+            print(">", end="")
+            i += 3
+        else:
+            print(body[i], end="")
+        i += 1
+
 
 def load(url: URL):
     body = url.request()
     show(body)
 
+def load_source(url: URL):
+    body = url.request()
+    view_source(body)
 
 if __name__ == "__main__":
     import sys
     if len(sys.argv) == 1:
         load(URL("file:///home/vlad/code/browser-py/browser.py"))
     else:
-        load(URL(sys.argv[1]))
+        load_source(URL(sys.argv[1]))
