@@ -1,22 +1,34 @@
 import socket
 import ssl
-from wsgiref.util import request_uri
+
+entities = {
+    "&lt;": "<",
+    "&gt;": ">",
+}
 
 class URL:
     def __init__(self, url) -> None:
-        self.scheme, url = url.split("://", 1)
+        self.scheme = None
+        self.host = None
+        self.port = None
+        self.path = ""
+        self.data = ""
 
-        assert self.scheme in ["http", "https", "file"]
+        if "://" in url:
+            self.scheme, url = url.split("://", 1)
+        elif "," in url:
+            self.scheme, url = url.split(",", 1)
+
+        assert self.scheme in ["http", "https", "file", "data:text/html"]
 
         if self.scheme == "http":
             self.port = 80
         elif self.scheme == "https":
             self.port = 443
-        elif self.scheme == "file":
-            self.port = None
 
 
         if self.scheme in ["http", "https"]:
+            self.host = "" # I get warning from pyright if i dont do this _|_
             if "/" not in url:
                 url += "/"
                 self.host, url = url.split("/", 1)
@@ -25,9 +37,11 @@ class URL:
             if ":" in self.host:
                 self.host, port = self.host.split(":", 1)
                 self.port = int(port)
-
         elif self.scheme == "file":
             self.path = url
+        elif self.scheme == "data:text/html":
+            self.data = url
+
 
     def request_url(self):
         s = socket.socket(
@@ -77,12 +91,17 @@ class URL:
         s.close()
         return content
 
+    def request_file(self):
+        with open(self.path, "r") as f:
+            return f.read()
+
     def request(self):
         if self.scheme in ["http", "https"]:
-            self.request_url()
+            return self.request_url()
         elif self.scheme == "file":
-            with open(self.path, "r") as f:
-                return f.read()
+            return self.request_file()
+        elif self.scheme == "data:text/html":
+            return self.data
 
 
 def show(body):
