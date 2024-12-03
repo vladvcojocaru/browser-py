@@ -1,5 +1,6 @@
 import socket
 import ssl
+from wsgiref.util import request_uri
 
 class URL:
     def __init__(self, url) -> None:
@@ -28,53 +29,57 @@ class URL:
         elif self.scheme == "file":
             self.path = url
 
+    def request_url(self):
+        s = socket.socket(
+            family=socket.AF_INET,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP
+        )
+
+        s.connect((self.host, self.port))
+
+        if self.scheme == "https":
+            ctx = ssl.create_default_context()
+            s = ctx.wrap_socket(s, server_hostname=self.host)
+        headers = {
+            "Host": self.host,
+            "User-Agent": "my-custom-browser",
+            "Connection": "close"
+        }
+
+        request = f"GET {format(self.path)} HTTP/1.1\r\n"
+
+        for key, value in headers.items():
+            request += f"{key}: {value}\r\n"
+        request += "\r\n"
+
+        s.send(request.encode("utf8"))
+
+        response = s.makefile('r', encoding='utf8', newline='\r\n')
+
+        statusline = response.readline()
+
+        version, status, explanation = statusline.split(" ", 2)
+
+        response_headers = {}
+
+        while True:
+            line = response.readline()
+            if line == "\r\n":
+                break;
+            header, value = line.split(":", 1)
+            response_headers[header.casefold()] = value.strip()
+
+        assert "transfer-encoding" not in response_headers
+        assert "content-encoding" not in response_headers
+
+        content = response.read()
+        s.close()
+        return content
+
     def request(self):
         if self.scheme in ["http", "https"]:
-            s = socket.socket(
-                family=socket.AF_INET,
-                type=socket.SOCK_STREAM,
-                proto=socket.IPPROTO_TCP
-            )
-            s.connect((self.host, self.port))
-            if self.scheme == "https":
-                ctx = ssl.create_default_context()
-                s = ctx.wrap_socket(s, server_hostname=self.host)
-
-            headers = {
-                "Host": self.host,
-                "User-Agent": "my-custom-browser",
-                "Connection": "close"
-            }
-            request = f"GET {format(self.path)} HTTP/1.1\r\n"
-            for key, value in headers.items():
-                request += f"{key}: {value}\r\n"
-
-            request += "\r\n"
-
-            s.send(request.encode("utf8"))
-
-            response = s.makefile('r', encoding='utf8', newline='\r\n')
-
-            statusline = response.readline()
-            version, status, explanation = statusline.split(" ", 2)
-
-            response_headers = {}
-            while True:
-                line = response.readline()
-                if line == "\r\n":
-                    break;
-
-                header, value = line.split(":", 1)
-                response_headers[header.casefold()] = value.strip()
-
-            assert "transfer-encoding" not in response_headers
-            assert "content-encoding" not in response_headers
-
-            content = response.read()
-            s.close()
-
-            return content
-
+            self.request_url()
         elif self.scheme == "file":
             with open(self.path, "r") as f:
                 return f.read()
