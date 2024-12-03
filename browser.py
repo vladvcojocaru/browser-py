@@ -1,5 +1,6 @@
 import socket
 import ssl
+from typing import Optional
 
 # Entity replacement for HTML encoding
 entities = {
@@ -13,12 +14,12 @@ class URL:
     """
     def __init__(self, url: str) -> None:
         # Initialize URL components
-        self.scheme = None
-        self.host = None
-        self.port = None
-        self.path = ""
-        self.data = ""
-        self.socket = None  # Socket for persistent connections
+        self.scheme: str = ""
+        self.host: str= ""
+        self.port: int= 0
+        self.path: str = ""
+        self.data: str = ""
+        self.socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)   # dummy socket because that dumb pyright doesn't see my try-except blocks
 
         # Parse the scheme
         if "://" in url:
@@ -55,7 +56,7 @@ class URL:
         elif self.scheme == "data:text/html":
             self.data = url
 
-    def _create_socket(self):
+    def _create_socket(self) -> None:
         """
         Create and initialize a socket for HTTP/HTTPS communication.
         """
@@ -89,7 +90,7 @@ class URL:
         headers = {
             "Host": self.host,
             "User-Agent": "my-custom-browser",
-            "Connection": "keep-alive",  # Persistent connection
+            "Connection": "close",  # Persistent connection | change to close for debugging
         }
         # Construct the HTTP request
         request = f"GET {self.path} HTTP/1.1\r\n"
@@ -104,10 +105,16 @@ class URL:
         # Send the HTTP request
         self._send_request(request)
 
-        # Read the response
+        # Read the responsOptionale
         response = self.socket.makefile('r', encoding='utf8', newline='\r\n')
         statusline = response.readline()
         version, status, explanation = statusline.split(" ", 2)
+
+        # CHECK HOW THIS WORKs
+        # Check for HTTP errors
+        if not status.startswith("2"):
+            raise ValueError(f"HTTP request failed with status: {status} {explanation.strip()}")
+
 
         # Parse headers
         response_headers = {}
@@ -128,6 +135,7 @@ class URL:
 
         # Read response body
         content_length = int(response_headers.get('content-length', 0))
+        print(f"Content length: {content_length}\n")
         body = b""
         while len(body) < content_length:
             try:
@@ -142,7 +150,7 @@ class URL:
 
         return body.decode("utf8")
 
-    def request_file(self):
+    def request_file(self) -> str:
         """
         Load content from a file.
         """
