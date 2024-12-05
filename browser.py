@@ -1,6 +1,5 @@
 import socket
 import ssl
-from typing import Optional
 
 # Entity replacement for HTML encoding
 entities = {
@@ -8,18 +7,22 @@ entities = {
     "&gt;": ">",
 }
 
+
 class URL:
     """
     A class to parse and handle URLs with support for HTTP, HTTPS, file, and inline data schemes.
     """
+
     def __init__(self, url: str) -> None:
         # Initialize URL components
         self.scheme: str = ""
-        self.host: str= ""
-        self.port: int= 0
+        self.host: str = ""
+        self.port: int = 0
         self.path: str = ""
         self.data: str = ""
-        self.socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)   # dummy socket because that dumb pyright doesn't see my try-except blocks
+        self.socket: socket.socket = socket.socket(
+            socket.AF_INET, socket.SOCK_STREAM
+        )  # dummy socket because that dumb pyright doesn't see my try-except blocks
 
         # Parse the scheme
         if "://" in url:
@@ -30,7 +33,12 @@ class URL:
             raise ValueError("Invalid URL format")
 
         # Validate the scheme
-        assert self.scheme in ["http", "https", "file", "data:text/html"], "Unsupported scheme"
+        assert self.scheme in [
+            "http",
+            "https",
+            "file",
+            "data:text/html",
+        ], "Unsupported scheme"
 
         # Set default ports for HTTP/HTTPS
         if self.scheme == "http":
@@ -105,16 +113,15 @@ class URL:
         # Send the HTTP request
         self._send_request(request)
 
-        # Read the responsOptionale
-        response = self.socket.makefile('r', encoding='utf8', newline='\r\n')
+        # Read the response
+        response = self.socket.makefile("r", encoding="utf8", newline="\r\n")
         statusline = response.readline()
         version, status, explanation = statusline.split(" ", 2)
 
         # CHECK HOW THIS WORKs
         # Check for HTTP errors
-        if not status.startswith("2"):
-            raise ValueError(f"HTTP request failed with status: {status} {explanation.strip()}")
-
+        # if not status.startswith("2"):
+        #     raise ValueError(f"HTTP request failed with status: {status} {explanation.strip()}")
 
         # Parse headers
         response_headers = {}
@@ -130,18 +137,24 @@ class URL:
         print(f"Request:\n{request}")
 
         # Handle unsupported features
-        assert "transfer-encoding" not in response_headers, "Chunked transfer encoding not supported"
-        assert "content-encoding" not in response_headers, "Compressed content not supported"
+        assert (
+            "transfer-encoding" not in response_headers
+        ), "Chunked transfer encoding not supported"
+        assert (
+            "content-encoding" not in response_headers
+        ), "Compressed content not supported"
 
         # Read response body
-        content_length = int(response_headers.get('content-length', 0))
+        content_length = int(response_headers.get("content-length", 0))
         print(f"Content length: {content_length}\n")
         body = b""
         while len(body) < content_length:
             try:
                 chunk = self.socket.recv(content_length - len(body))
                 if not chunk:
-                    print(f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received.")
+                    print(
+                        f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
+                    )
                     break
                 body += chunk
             except socket.timeout:
@@ -180,7 +193,7 @@ def show(body):
         elif c == ">":
             in_tag = False
         elif not in_tag:
-            print(entities.get(body[i:i+4], c), end="")
+            print(entities.get(body[i : i + 4], c), end="")
 
 
 def view_source(body):
@@ -188,7 +201,7 @@ def view_source(body):
     Render the raw source of the body content.
     """
     for i, c in enumerate(body):
-        print(entities.get(body[i:i+4], c), end="")
+        print(entities.get(body[i : i + 4], c), end="")
 
 
 def load(url: URL):
@@ -209,6 +222,7 @@ def load_source(url: URL):
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) == 1:
         load(URL("file:///home/vlad/code/browser-py/browser.py"))
     else:
