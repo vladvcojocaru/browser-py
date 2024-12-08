@@ -20,6 +20,7 @@ class URL:
         self.port: int = 0
         self.path: str = ""
         self.data: str = ""
+        self.redirect_counts: int = 0
         self.socket: socket.socket = socket.socket(
             socket.AF_INET, socket.SOCK_STREAM
         )  # dummy socket because that dumb pyright doesn't see my try-except blocks
@@ -98,7 +99,7 @@ class URL:
         headers = {
             "Host": self.host,
             "User-Agent": "my-custom-browser",
-            "Connection": "close",  # Persistent connection | change to close for debugging
+            "Connection": "keep-alive",  # Persistent connection | change to close for debugging
         }
         # Construct the HTTP request
         request = f"GET {self.path} HTTP/1.1\r\n"
@@ -117,11 +118,7 @@ class URL:
         response = self.socket.makefile("r", encoding="utf8", newline="\r\n")
         statusline = response.readline()
         version, status, explanation = statusline.split(" ", 2)
-
-        # CHECK HOW THIS WORKs
-        # Check for HTTP errors
-        # if not status.startswith("2"):
-        #     raise ValueError(f"HTTP request failed with status: {status} {explanation.strip()}")
+        print(f"Status line: {statusline}")
 
         # Parse headers
         response_headers = {}
@@ -136,32 +133,57 @@ class URL:
         print(f"Host: {self.host}, Path: {self.path}, Port: {self.port}")
         print(f"Request:\n{request}")
 
-        # Handle unsupported features
-        assert (
-            "transfer-encoding" not in response_headers
-        ), "Chunked transfer encoding not supported"
-        assert (
-            "content-encoding" not in response_headers
-        ), "Compressed content not supported"
+        if status[0] == "2":
+            # Handle unsupported features
+            assert (
+                "transfer-encoding" not in response_headers
+            ), "Chunked transfer encoding not supported"
+            assert (
+                "content-encoding" not in response_headers
+            ), "Compressed content not supported"
 
-        # Read response body
-        content_length = int(response_headers.get("content-length", 0))
-        print(f"Content length: {content_length}\n")
-        body = b""
-        while len(body) < content_length:
-            try:
-                chunk = self.socket.recv(content_length - len(body))
-                if not chunk:
-                    print(
-                        f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
-                    )
+            # Read response body
+            content_length = int(response_headers.get("content-length", 0))
+            print(f"Content length: {content_length}\n")
+            body = b""
+
+            while len(body) < content_length:
+                try:
+                    chunk = self.socket.recv(content_length - len(body))
+                    if not chunk:
+                        print(
+                            f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
+                        )
+                        break
+                    body += chunk
+                except socket.timeout:
+                    print("Warning: Socket timeout while reading response body.")
                     break
-                body += chunk
-            except socket.timeout:
-                print("Warning: Socket timeout while reading response body.")
-                break
 
-        return body.decode("utf8")
+            return body.decode("utf8")
+
+        elif status[0] == "3":
+            location = response_headers.get("location")
+            if not location:
+                raise ValueError("Redirect response missing Location header")
+
+            if "://" in location:
+                self.scheme, url = location.split("://", 1)
+                if "/" not in url:
+                    url += "/"
+                self.host, url = url.split("/", 1)
+                self.path = "/" + url
+            else:
+                self.path = location
+
+            self.redirect_counts += 1
+
+            if self.redirect_counts > 5:
+                raise ValueError("Too many redirects")
+            return self.request_url()
+
+
+
 
     def request_file(self) -> str:
         """
