@@ -66,10 +66,6 @@ class URL:
             self.data = url
 
     def _create_socket(self) -> None:
-        """
-        Create and initialize a socket for HTTP/HTTPS communication.
-        """
-        # Create a TCP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.settimeout(10)  # Set timeout for socket operations
         self.socket.connect((self.host, self.port))
@@ -80,9 +76,6 @@ class URL:
             self.socket = ctx.wrap_socket(self.socket, server_hostname=self.host)
 
     def _send_request(self, request: str):
-        """
-        Send an HTTP request over the socket, reconnecting if necessary.
-        """
         try:
             # Send the request over the existing socket
             self.socket.send(request.encode("utf8"))
@@ -92,9 +85,6 @@ class URL:
             self.socket.send(request.encode("utf8"))
 
     def request_url(self):
-        """
-        Perform an HTTP/HTTPS request and return the response body.
-        """
         # Prepare HTTP headers
         headers = {
             "Host": self.host,
@@ -186,16 +176,10 @@ class URL:
 
 
     def request_file(self) -> str:
-        """
-        Load content from a file.
-        """
         with open(self.path, "r") as f:
             return f.read()
 
     def request(self):
-        """
-        Dispatch the appropriate request based on the scheme.
-        """
         if self.scheme in ["http", "https"]:
             return self.request_url()
         elif self.scheme == "file":
@@ -205,9 +189,6 @@ class URL:
 
 
 def show(body):
-    """
-    Render the body content, skipping HTML tags.
-    """
     in_tag = False
     for i, c in enumerate(body):
         if c == "<":
@@ -219,25 +200,16 @@ def show(body):
 
 
 def view_source(body):
-    """
-    Render the raw source of the body content.
-    """
     for i, c in enumerate(body):
         print(entities.get(body[i : i + 4], c), end="")
 
 
 def load(url: URL):
-    """
-    Load and display the URL content.
-    """
     body = url.request()
     show(body)
 
 
 def load_source(url: URL):
-    """
-    Load and display the raw source of the URL content.
-    """
     body = url.request()
     view_source(body)
 
