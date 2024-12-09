@@ -75,7 +75,7 @@ class URL:
             ctx = ssl.create_default_context()
             self.socket = ctx.wrap_socket(self.socket, server_hostname=self.host)
 
-    def _send_request(self, request: str):
+    def _send_request(self, request: str) -> None:
         try:
             # Send the request over the existing socket
             self.socket.send(request.encode("utf8"))
@@ -84,7 +84,7 @@ class URL:
             self._create_socket()
             self.socket.send(request.encode("utf8"))
 
-    def request_url(self):
+    def request_url(self) -> str:
         # Prepare HTTP headers
         headers = {
             "Host": self.host,
@@ -151,7 +151,6 @@ class URL:
                     break
 
             return body.decode("utf8")
-
         elif status[0] == "3":
             location = response_headers.get("location")
             if not location:
@@ -171,6 +170,10 @@ class URL:
             if self.redirect_counts > 5:
                 raise ValueError("Too many redirects")
             return self.request_url()
+
+        else:
+            print("Invalid status")
+            exit(1)
 
 
 
