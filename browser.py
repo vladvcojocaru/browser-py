@@ -85,8 +85,7 @@ class URL:
             self._create_socket()
             self.socket.send(request.encode("utf8"))
 
-    def request_url(self) -> str:
-        # Prepare HTTP headers
+    def _prepare_request(self) -> str:
         headers = {
             "Host": self.host,
             "User-Agent": "my-custom-browser",
@@ -97,21 +96,13 @@ class URL:
         for key, value in headers.items():
             request += f"{key}: {value}\r\n"
         request += "\r\n"
+        return request
 
-        # Ensure the socket is created and connected
-        if not self.socket:
-            self._create_socket()
-
-        # Send the HTTP request
-        self._send_request(request)
-
-        # Read the response
-        response = self.socket.makefile("r", encoding="utf8", newline="\r\n")
+    def _parse_response_headers(self, response) -> tuple:
         statusline = response.readline()
         version, status, explanation = statusline.split(" ", 2)
         print(f"Status line: {statusline}")
 
-        # Parse headers
         response_headers = {}
         while True:
             line = response.readline()
@@ -122,7 +113,63 @@ class URL:
 
         print(f"Response headers: {response_headers}")
         print(f"Host: {self.host}, Path: {self.path}, Port: {self.port}")
-        print(f"Request:\n{request}")
+        return status, response_headers
+
+    def _read_response_body(self, response_headers, content_length:int) -> str:
+        if self.scheme + self.host + self.path in self.cache:
+            return self.cache[self.scheme + self.host + self.path]
+
+        body = b""
+        while len(body) < content_length:
+            try:
+                chunk = self.socket.recv(content_length - len(body))
+                if not chunk:
+                    print(
+                        f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
+                    )
+                    break
+                body += chunk
+            except socket.timeout:
+                print("Warning: Socket timeout while reading response body.")
+                break
+
+        cache_control = response_headers.get("cache-control", "")
+        if cache_control not in ["no-store", ""]:
+            self.cache[self.scheme + self.host + self.path] = body.decode("utf8")
+
+        return body.decode("utf8")
+
+    def _handle_redirect(self, response_headers) -> str:
+        location = response_headers.get("location")
+        if not location:
+            raise ValueError("Redirect response missing Location header")
+
+        if "://" in location:
+            self.scheme, url = location.split("://", 1)
+            if "/" not in url:
+                url += "/"
+            self.host, url = url.split("/", 1)
+            self.path = "/" + url
+        else:
+            self.path = location
+
+        self.redirect_counts += 1
+        if self.redirect_counts > 5:
+            raise ValueError("Too many redirects")
+
+        return self.request_url()
+
+    def request_url(self) -> str:
+        request = self._prepare_request()
+
+        if not self.socket:
+            self._create_socket()
+        self._send_request(request)
+
+        # Read the response
+        response = self.socket.makefile("r", encoding="utf8", newline="\r\n")
+        status, response_headers = self._parse_response_headers(response)
+
 
         if status[0] == "2":
             # Handle unsupported features
@@ -133,57 +180,15 @@ class URL:
                 "content-encoding" not in response_headers
             ), "Compressed content not supported"
 
-            # Read response body
             content_length = int(response_headers.get("content-length", 0))
             print(f"Content length: {content_length}\n")
-            body = b""
 
-            if self.scheme + self.host + self.path not in self.cache:
-                while len(body) < content_length:
-                    try:
-                        chunk = self.socket.recv(content_length - len(body))
-                        if not chunk:
-                            print(
-                                f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
-                            )
-                            break
-                        body += chunk
-                    except socket.timeout:
-                        print("Warning: Socket timeout while reading response body.")
-                        break
-
-                if "cache-control" in response_headers and (response_headers["cache-control"] == "no-store" or response_headers["cache-control"] == "max-age"):
-                    self.cache[self.scheme+self.host+self.path] = body.decode("utf8")
-                return body.decode("utf8")
-            else:
-                return self.cache[self.scheme+self.host+self.path]
-
+            return self._read_response_body(response_headers, content_length)
         elif status[0] == "3":
-            location = response_headers.get("location")
-            if not location:
-                raise ValueError("Redirect response missing Location header")
-
-            if "://" in location:
-                self.scheme, url = location.split("://", 1)
-                if "/" not in url:
-                    url += "/"
-                self.host, url = url.split("/", 1)
-                self.path = "/" + url
-            else:
-                self.path = location
-
-            self.redirect_counts += 1
-
-            if self.redirect_counts > 5:
-                raise ValueError("Too many redirects")
-            return self.request_url()
-
+            return self._handle_redirect(response_headers)
         else:
             print("Invalid status")
             exit(1)
-
-
-
 
     def request_file(self) -> str:
         with open(self.path, "r") as f:
