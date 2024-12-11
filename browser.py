@@ -24,6 +24,7 @@ class URL:
         self.socket: socket.socket = socket.socket(
             socket.AF_INET, socket.SOCK_STREAM
         )  # dummy socket because that dumb pyright doesn't see my try-except blocks
+        self.cache = {}
 
         # Parse the scheme
         if "://" in url:
@@ -137,20 +138,26 @@ class URL:
             print(f"Content length: {content_length}\n")
             body = b""
 
-            while len(body) < content_length:
-                try:
-                    chunk = self.socket.recv(content_length - len(body))
-                    if not chunk:
-                        print(
-                            f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
-                        )
+            if self.scheme + self.host + self.path not in self.cache:
+                while len(body) < content_length:
+                    try:
+                        chunk = self.socket.recv(content_length - len(body))
+                        if not chunk:
+                            print(
+                                f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
+                            )
+                            break
+                        body += chunk
+                    except socket.timeout:
+                        print("Warning: Socket timeout while reading response body.")
                         break
-                    body += chunk
-                except socket.timeout:
-                    print("Warning: Socket timeout while reading response body.")
-                    break
 
-            return body.decode("utf8")
+                if "cache-control" in response_headers and (response_headers["cache-control"] == "no-store" or response_headers["cache-control"] == "max-age"):
+                    self.cache[self.scheme+self.host+self.path] = body.decode("utf8")
+                return body.decode("utf8")
+            else:
+                return self.cache[self.scheme+self.host+self.path]
+
         elif status[0] == "3":
             location = response_headers.get("location")
             if not location:
