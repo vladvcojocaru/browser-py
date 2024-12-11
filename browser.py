@@ -89,7 +89,8 @@ class URL:
         headers = {
             "Host": self.host,
             "User-Agent": "my-custom-browser",
-            "Connection": "keep-alive",  # Persistent connection | change to close for debugging
+            "Connection": "keep-alive",
+            "Accept-Encoding": "gzip"
         }
         # Construct the HTTP request
         request = f"GET {self.path} HTTP/1.1\r\n"
@@ -99,45 +100,74 @@ class URL:
         return request
 
     def _parse_response_headers(self, response) -> tuple:
-        statusline = response.readline()
+        statusline = response.readline().decode("utf-8", errors="replace")
+        print(f"Status line: {statusline.strip()}")
         version, status, explanation = statusline.split(" ", 2)
-        print(f"Status line: {statusline}")
 
         response_headers = {}
         while True:
-            line = response.readline()
+            line = response.readline().decode("utf-8", errors="replace")
             if line == "\r\n":
                 break
-            header, value = line.split(":", 1)
-            response_headers[header.casefold()] = value.strip()
+            try:
+                header, value = line.split(":", 1)
+                response_headers[header.lower()] = value.strip()
+            except ValueError:
+                print(f"Malformed header line: {line}")
 
         print(f"Response headers: {response_headers}")
         print(f"Host: {self.host}, Path: {self.path}, Port: {self.port}")
         return status, response_headers
 
-    def _read_response_body(self, response_headers, content_length:int) -> str:
-        if self.scheme + self.host + self.path in self.cache:
-            return self.cache[self.scheme + self.host + self.path]
+
+    def _read_response_body(self, response, response_headers, content_length: int) -> str:
+        """
+        Reads the HTTP response body and handles transfer encoding and content length.
+        """
+        # Check if the response is cached
+        cache_key = self.scheme + self.host + self.path
+        if cache_key in self.cache:
+            return self.cache[cache_key]
 
         body = b""
-        while len(body) < content_length:
-            try:
-                chunk = self.socket.recv(content_length - len(body))
-                if not chunk:
-                    print(
-                        f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
-                    )
+
+        # Handle chunked transfer encoding
+        if "transfer-encoding" in response_headers and response_headers["transfer-encoding"] == "chunked":
+            print("Chunked transfer encoding detected.")
+
+            body = self._parse_chunked_body(response)
+        else:
+            # Handle fixed content length
+            while len(body) < content_length:
+                try:
+                    chunk = response.read(content_length - len(body))  # Read from the file-like object
+                    if not chunk:
+                        print(
+                            f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
+                        )
+                        break
+                    body += chunk
+                except socket.timeout:
+                    print("Warning: Socket timeout while reading response body.")
                     break
-                body += chunk
-            except socket.timeout:
-                print("Warning: Socket timeout while reading response body.")
-                break
 
+        # Handle gzip compression if applicable
+        if "content-encoding" in response_headers and response_headers["content-encoding"] == "gzip":
+            import gzip
+            try:
+                body = gzip.decompress(body)
+                print("GZIP WORKS")
+            except gzip.BadGzipFile:
+                print("Error: Failed to decompress gzip response")
+
+        # Cache the decoded body if allowed
         cache_control = response_headers.get("cache-control", "")
+        decoded_body = body.decode("utf8", errors="replace")
         if cache_control not in ["no-store", ""]:
-            self.cache[self.scheme + self.host + self.path] = body.decode("utf8")
+            self.cache[cache_key] = decoded_body
 
-        return body.decode("utf8")
+        return decoded_body
+
 
     def _handle_redirect(self, response_headers) -> str:
         location = response_headers.get("location")
@@ -159,6 +189,18 @@ class URL:
 
         return self.request_url()
 
+    def _parse_chunked_body(self, response) -> bytes:
+        body = b""
+        while True:
+            chunked_size_line = response.readline().strip()
+            chunk_size = int(chunked_size_line, 16)
+            if chunk_size == 0:
+                response.readline()
+                break
+            body += response.read(chunk_size)
+            response.readline()
+        return body
+
     def request_url(self) -> str:
         request = self._prepare_request()
 
@@ -166,29 +208,23 @@ class URL:
             self._create_socket()
         self._send_request(request)
 
-        # Read the response
-        response = self.socket.makefile("r", encoding="utf8", newline="\r\n")
-        status, response_headers = self._parse_response_headers(response)
+        # Open the response as a binary stream
+        response = self.socket.makefile("rb", newline="\r\n")
+        statusline, response_headers = self._parse_response_headers(response)
 
-
-        if status[0] == "2":
-            # Handle unsupported features
-            assert (
-                "transfer-encoding" not in response_headers
-            ), "Chunked transfer encoding not supported"
-            assert (
-                "content-encoding" not in response_headers
-            ), "Compressed content not supported"
-
-            content_length = int(response_headers.get("content-length", 0))
-            print(f"Content length: {content_length}\n")
-
-            return self._read_response_body(response_headers, content_length)
-        elif status[0] == "3":
+        # Handle body
+        if statusline.startswith("2"):  # Status codes 2xx
+            if "content-length" in response_headers:
+                content_length = int(response_headers["content-length"])
+            else:
+                content_length = 0  # Default to 0 if not specified
+            body = self._read_response_body(response, response_headers, content_length)
+            return body
+        elif statusline.startswith("3"):  # Status codes 3xx
             return self._handle_redirect(response_headers)
         else:
-            print("Invalid status")
-            exit(1)
+            raise ValueError(f"Unexpected HTTP status code: {statusline}")
+
 
     def request_file(self) -> str:
         with open(self.path, "r") as f:
