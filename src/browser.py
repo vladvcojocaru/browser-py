@@ -11,6 +11,7 @@ class Browser:
         self.canvas.pack()
 
     def load(self, url: URL):
+        
         HSTEP, VSTEP = 13, 18
         cursor_x, cursor_y = HSTEP, VSTEP
 
@@ -20,7 +21,7 @@ class Browser:
         for c in text:
             self.canvas.create_text(cursor_x, cursor_y, text=c)
             cursor_x += HSTEP
-
+            
             if cursor_x >= WIDTH - HSTEP:
                 cursor_y += VSTEP
                 cursor_x = HSTEP
