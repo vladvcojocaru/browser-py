@@ -90,7 +90,7 @@ class URL:
             "Host": self.host,
             "User-Agent": "my-custom-browser",
             "Connection": "keep-alive",
-            "Accept-Encoding": "gzip"
+            "Accept-Encoding": "gzip",
         }
         # Construct the HTTP request
         request = f"GET {self.path} HTTP/1.1\r\n"
@@ -119,8 +119,9 @@ class URL:
         print(f"Host: {self.host}, Path: {self.path}, Port: {self.port}")
         return status, response_headers
 
-
-    def _read_response_body(self, response, response_headers, content_length: int) -> str:
+    def _read_response_body(
+        self, response, response_headers, content_length: int
+    ) -> str:
         """
         Reads the HTTP response body and handles transfer encoding and content length.
         """
@@ -132,14 +133,19 @@ class URL:
         body = b""
 
         # Handle chunked transfer encoding
-        if "transfer-encoding" in response_headers and response_headers["transfer-encoding"] == "chunked":
+        if (
+            "transfer-encoding" in response_headers
+            and response_headers["transfer-encoding"] == "chunked"
+        ):
             print("Chunked transfer encoding detected.")
             body = self._parse_chunked_body(response)
         else:
             # Handle fixed content length
             while len(body) < content_length:
                 try:
-                    chunk = response.read(content_length - len(body))  # Read from the file-like object
+                    chunk = response.read(
+                        content_length - len(body)
+                    )  # Read from the file-like object
                     if not chunk:
                         print(
                             f"Warning: Connection closed. Only {len(body)} of {content_length} bytes received."
@@ -151,8 +157,12 @@ class URL:
                     break
 
         # Handle gzip compression if applicable
-        if "content-encoding" in response_headers and response_headers["content-encoding"] == "gzip":
+        if (
+            "content-encoding" in response_headers
+            and response_headers["content-encoding"] == "gzip"
+        ):
             import gzip
+
             try:
                 body = gzip.decompress(body)
                 print("GZIP WORKS")
@@ -166,7 +176,6 @@ class URL:
             self.cache[cache_key] = decoded_body
 
         return decoded_body
-
 
     def _handle_redirect(self, response_headers) -> str:
         location = response_headers.get("location")
@@ -224,7 +233,6 @@ class URL:
         else:
             raise ValueError(f"Unexpected HTTP status code: {statusline}")
 
-
     def request_file(self) -> str:
         with open(self.path, "r") as f:
             return f.read()
@@ -247,6 +255,7 @@ def show(body):
             in_tag = False
         elif not in_tag:
             print(entities.get(body[i : i + 4], c), end="")
+
 
 def lex(body):
     text = ""
