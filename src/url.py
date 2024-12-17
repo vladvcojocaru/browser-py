@@ -134,7 +134,6 @@ class URL:
         # Handle chunked transfer encoding
         if "transfer-encoding" in response_headers and response_headers["transfer-encoding"] == "chunked":
             print("Chunked transfer encoding detected.")
-
             body = self._parse_chunked_body(response)
         else:
             # Handle fixed content length
@@ -249,6 +248,18 @@ def show(body):
         elif not in_tag:
             print(entities.get(body[i : i + 4], c), end="")
 
+def lex(body):
+    text = ""
+    in_tag = False
+    for i, c in enumerate(body):
+        if c == "<":
+            in_tag = True
+        elif c == ">":
+            in_tag = False
+        elif not in_tag:
+            text += entities.get(body[i : i + 4], c)
+    return text
+
 
 def view_source(body):
     for i, c in enumerate(body):
@@ -265,10 +276,10 @@ def load_source(url: URL):
     view_source(body)
 
 
-if __name__ == "__main__":
-    import sys
+# if __name__ == "__main__":
+#     import sys
 
-    if len(sys.argv) == 1:
-        load(URL("file:///home/vlad/code/browser-py/browser.py"))
-    else:
-        load_source(URL(sys.argv[1]))
+#     if len(sys.argv) == 1:
+#         load(URL("file:///home/vlad/code/browser-py/browser.py"))
+#     else:
+#         load_source(URL(sys.argv[1]))
